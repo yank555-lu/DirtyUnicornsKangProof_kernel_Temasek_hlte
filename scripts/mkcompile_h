@@ -74,8 +74,8 @@ UTS_TRUNCATE="cut -b -$UTS_LEN"
   echo \#define UTS_VERSION \"`echo $UTS_VERSION | $UTS_TRUNCATE`\"
 
   echo \#define LINUX_COMPILE_TIME \"`date +%T`\"
-  echo \#define LINUX_COMPILE_BY \"moepda\"
-  echo \#define LINUX_COMPILE_HOST \"dirtyunicorns\"
+  echo \#define LINUX_COMPILE_BY \"temasek\"
+  echo \#define LINUX_COMPILE_HOST \"snappy\"
 
   echo \#define LINUX_COMPILER \"`$CC -v 2>&1 | tail -n 1`\"
 ) > .tmpcompile
