@@ -23,7 +23,7 @@
 /* 
  * Timeout for stopping processes
  */
-unsigned int __read_mostly freeze_timeout_msecs = 20 * MSEC_PER_SEC;
+#define TIMEOUT	(20 * HZ)
 
 static int try_to_freeze_tasks(bool user_only)
 {
@@ -40,7 +40,7 @@ static int try_to_freeze_tasks(bool user_only)
 
 	do_gettimeofday(&start);
 
-	end_time = jiffies + msecs_to_jiffies(freeze_timeout_msecs);
+	end_time = jiffies + TIMEOUT;
 
 	if (!user_only)
 		freeze_workqueues_begin();
@@ -136,9 +136,6 @@ int freeze_processes(void)
 	if (error)
 		return error;
 
-	/* Make sure this task doesn't get frozen */
-	current->flags |= PF_SUSPEND_TASK;
-
 	if (!pm_freezing)
 		atomic_inc(&system_freezing_cnt);
 
@@ -187,7 +184,6 @@ int freeze_kernel_threads(void)
 void thaw_processes(void)
 {
 	struct task_struct *g, *p;
-	struct task_struct *curr = current;
 
 	if (pm_freezing)
 		atomic_dec(&system_freezing_cnt);
@@ -203,14 +199,9 @@ void thaw_processes(void)
 
 	read_lock(&tasklist_lock);
 	do_each_thread(g, p) {
-		/* No other threads should have PF_SUSPEND_TASK set */
-		WARN_ON((p != curr) && (p->flags & PF_SUSPEND_TASK));
 		__thaw_task(p);
 	} while_each_thread(g, p);
 	read_unlock(&tasklist_lock);
-
-	WARN_ON(!(curr->flags & PF_SUSPEND_TASK));
-	curr->flags &= ~PF_SUSPEND_TASK;
 
 	usermodehelper_enable();
 
