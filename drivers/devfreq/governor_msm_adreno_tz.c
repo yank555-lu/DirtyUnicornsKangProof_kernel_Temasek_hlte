@@ -43,11 +43,7 @@ static DEFINE_SPINLOCK(tz_lock);
 #define TZ_UPDATE_ID		0x4
 #define TZ_INIT_ID		0x6
 
-#define DEVFREQ_ADRENO_TZ	"msm-adreno-tz"
 #define TAG "msm_adreno_tz: "
-
-static unsigned int tz_target = TARGET;
-static unsigned int tz_cap = CAP;
 
 /* Trap into the TrustZone, and call funcs there. */
 static int __secure_tz_entry2(u32 cmd, u32 val1, u32 val2)
@@ -83,12 +79,6 @@ static void _update_cutoff(struct devfreq_msm_adreno_tz_data *priv,
 		priv->bus.down[i] = priv->bus.p_down[i] * norm_max / 100;
 	}
 }
-
-#ifdef CONFIG_SIMPLE_GPU_ALGORITHM
-extern int simple_gpu_active;
-extern int simple_gpu_algorithm(int level,
-				struct devfreq_msm_adreno_tz_data *priv);
-#endif
 
 static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
 				u32 *flag)
@@ -147,20 +137,10 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
 	if (priv->bin.busy_time > CEILING) {
 		val = -1 * level;
 	} else {
-#ifdef CONFIG_SIMPLE_GPU_ALGORITHM
-		if (simple_gpu_active != 0)
-			val = simple_gpu_algorithm(level, priv);
-		else
-			val = __secure_tz_entry3(TZ_UPDATE_ID,
-					level,
-					priv->bin.total_time,
-					priv->bin.busy_time);
-#else
 		val = __secure_tz_entry3(TZ_UPDATE_ID,
 				level,
 				priv->bin.total_time,
 				priv->bin.busy_time);
-#endif
 	}
 	priv->bin.total_time = 0;
 	priv->bin.busy_time = 0;
@@ -195,13 +175,13 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
 		 * Normalize by gpu_time unless it is a small fraction of
 		 * the total time interval.
 		 */
-		norm_cycles = (100 * norm_cycles) / tz_target;
+		norm_cycles = (100 * norm_cycles) / TARGET;
 		act_level = priv->bus.index[level] + b.mod;
 		act_level = (act_level < 0) ? 0 : act_level;
 		act_level = (act_level >= priv->bus.num) ?
 			(priv->bus.num - 1) : act_level;
 		if (norm_cycles > priv->bus.up[act_level] &&
-			gpu_percent > tz_cap)
+			gpu_percent > CAP)
 			*flag = DEVFREQ_FLAG_FAST_HINT;
 		else if (norm_cycles < priv->bus.down[act_level] && level)
 			*flag = DEVFREQ_FLAG_SLOW_HINT;
@@ -244,18 +224,10 @@ static int tz_start(struct devfreq *devfreq)
 	unsigned int t1, t2 = 2 * HIST;
 	int i, out, ret;
 
-	struct msm_adreno_extended_profile *ext_profile = container_of(
-					(devfreq->profile),
-					struct msm_adreno_extended_profile,
-					profile);
-
-	/*
-	 * Assuming that we have only one instance of the adreno device
-	 * connected to this governor,
-	 * can safely restore the pointer to the governor private data
-	 * from the container of the device profile
-	 */
-	devfreq->data = ext_profile->private_data;
+	if (devfreq->data == NULL) {
+		pr_err(TAG "data is required for this governor\n");
+		return -EINVAL;
+	}
 
 	priv = devfreq->data;
 	priv->nb.notifier_call = tz_notify;
@@ -302,8 +274,6 @@ static int tz_stop(struct devfreq *devfreq)
 	struct devfreq_msm_adreno_tz_data *priv = devfreq->data;
 
 	kgsl_devfreq_del_notifier(devfreq->dev.parent, &priv->nb);
-	/* leaving the governor and cleaning the pointer to private data */
-	devfreq->data = NULL;
 	return 0;
 }
 
@@ -332,66 +302,6 @@ static int tz_suspend(struct devfreq *devfreq)
 	return 0;
 }
 
-static ssize_t adreno_tz_target_show(struct kobject *kobj,
-						struct kobj_attribute *attr,
-						char *buf)
-{
-	return sprintf(buf, "%d\n", tz_target);
-}
-
-static ssize_t adreno_tz_target_store(struct kobject *kobj,
-					   struct kobj_attribute *attr,
-					   const char *buf, size_t count)
-{
-	unsigned int val;
-
-	sscanf(buf, "%d", &val);
-	if (val > 100 || val < tz_cap)
-		return -EINVAL;
-
-	tz_target = val;
-
-	return count;
-}
-
-static ssize_t adreno_tz_cap_show(struct kobject *kobj,
-					       struct kobj_attribute *attr,
-					       char *buf)
-{
-	return sprintf(buf, "%d\n", tz_cap);
-}
-
-static ssize_t adreno_tz_cap_store(struct kobject *kobj,
-						struct kobj_attribute *attr,
-						const char *buf, size_t count)
-{
-	unsigned int val;
-
-	sscanf(buf, "%d", &val);
-	if (val > tz_target)
-		return -EINVAL;
-
-	tz_cap = val;
-
-	return count;
-}
-
-static struct kobj_attribute target_attribute =
-	__ATTR(target, 0664, adreno_tz_target_show, adreno_tz_target_store);
-static struct kobj_attribute cap_attribute =
-	__ATTR(cap, 0664, adreno_tz_cap_show, adreno_tz_cap_store);
-
-static struct attribute *attrs[] = {
-	&target_attribute.attr,
-	&cap_attribute.attr,
-	NULL,
-};
-
-static struct attribute_group attr_group = {
-	.attrs = attrs,
-	.name = DEVFREQ_ADRENO_TZ,
-};
-
 static int tz_handler(struct devfreq *devfreq, unsigned int event, void *data)
 {
 	int result;
@@ -400,11 +310,9 @@ static int tz_handler(struct devfreq *devfreq, unsigned int event, void *data)
 	switch (event) {
 	case DEVFREQ_GOV_START:
 		result = tz_start(devfreq);
-		result = devfreq_policy_add_files(devfreq, attr_group);
 		break;
 
 	case DEVFREQ_GOV_STOP:
-		devfreq_policy_remove_files(devfreq, attr_group);
 		result = tz_stop(devfreq);
 		break;
 

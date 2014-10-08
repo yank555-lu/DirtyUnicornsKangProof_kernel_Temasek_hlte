@@ -287,7 +287,6 @@ config ARCH_MSM8974
 	select ARCH_WANT_KMAP_ATOMIC_FLUSH
 	select KRAIT_REGULATOR
 	select ENABLE_VMALLOC_SAVINGS
-	select HAS_MACH_MEMUTILS
 	select MSM_AVTIMER
 
 config ARCH_MSM8974PRO
@@ -1434,7 +1433,7 @@ config MACH_H3G_CHN_OPEN
 	select SEC_H_PROJECT
 	help
 	  Support for Samsung H3G CHN OPEN device.
-
+	  
 config MACH_H3G_CHN_CMCC
 	default n
 	bool "Samsung model H3G_CHN_CMCC"
@@ -1454,14 +1453,14 @@ config MACH_H3GDUOS
 	bool "Samsung model H3GDUOS"
 	select SEC_H_PROJECT
 	help
-	  Support for Samsung H3GDUOS device.
+	  Support for Samsung H3GDUOS device.	  
 
 config MACH_H3GDUOS_CU
 	default n
 	bool "Samsung model H3GDUOS_CU"
 	select SEC_H_PROJECT
 	help
-	  Support for Samsung H3GDUOS_CU device.
+	  Support for Samsung H3GDUOS_CU device.  
 	  
 config MACH_HLTESPR
 	default n
@@ -1497,7 +1496,7 @@ config MACH_HLTEAUS
 	select SEC_H_PROJECT
 	help
 	  Support for Samsung HLTEAUS device.
-
+	  
 config SEC_F_PROJECT
 	default n
 	bool "Samsung F project"
@@ -1754,7 +1753,7 @@ config RTC_AUTO_PWRON
 	help
 	  Support for the auto power on alarm on the PM8XXX PMIC.
 	  Say Y if you want to enable this feature.
-
+ 
 config RTC_AUTO_PWRON_PARAM
 	bool "RTC Auto Power on with param PM8xxx PMICs"
 	depends on RTC_AUTO_PWRON
@@ -2451,6 +2450,22 @@ config MSM_RPCSERVER_HANDSET
 	help
 	  Support for receiving handset events like headset detect,
 	  headset switch and clamshell state.
+
+config MSM_RMT_STORAGE_CLIENT
+	depends on (ARCH_MSM && MSM_ONCRPCROUTER)
+	default n
+	bool "Remote Storage RPC client"
+	help
+	  Provide RPC mechanism for remote processors to access storage
+	  device on apps processor.
+
+config MSM_RMT_STORAGE_CLIENT_STATS
+	depends on (MSM_RMT_STORAGE_CLIENT && DEBUG_FS)
+	default n
+	bool "Remote storage RPC client performance statistics"
+	help
+	  Collects performance statistics and shows this information
+	  through a debugfs file rmt_storage_stats.
 
 config MSM_DALRPC
 	bool "DAL RPC support"
@@ -3514,14 +3529,6 @@ config MSM_DCVS
 	  algorithm and the algorithm returns a frequency for the core which is
 	  passed to the frequency change driver.
 
-config MSM_HOTPLUG
-	bool "MSM hotplug driver"
-	depends on HOTPLUG_CPU
-	default y
-	help
-	  The MSM hotplug driver controls on-/offlining of additional cores based
-	  on current cpu load.
-
 config MSM_CPR
 	tristate "Use MSM CPR in S/W mode"
 	help
@@ -3790,19 +3797,4 @@ config KRAIT_REGULATOR
 	 line from the PMIC. This supply line is powered by multiple
 	 regulators running in ganged mode inside the PMIC. Enable
 	 this option to support such configurations.
-
-config HAS_MACH_MEMUTILS
-	default n
-	bool "Motorola MSM memcpy enhancements"
-	help
-	Faster memcpy performance for Krait
-
-config FORCE_FAST_CHARGE
-	bool "Force fast charging (AC/USB) by Yank555.lu"
-	default n
-	help
-	  A simple sysfs interface to force adapters that
-	  are detected as USB to charge as AC (1A/h) or to set
-	  custom charging currents for AC and USB.
-	
 endif

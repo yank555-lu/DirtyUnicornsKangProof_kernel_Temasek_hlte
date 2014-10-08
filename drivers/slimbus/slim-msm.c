@@ -1213,7 +1213,6 @@ int msm_slim_qmi_init(struct msm_slim_ctrl *dev, bool apps_is_master)
 	}
 
 	rc = qmi_connect_to_service(handle, SLIMBUS_QMI_SVC_ID,
-						SLIMBUS_QMI_SVC_V1,
 						SLIMBUS_QMI_INS_ID);
 	if (rc < 0) {
 		SLIM_ERR(dev, "%s: QMI server not found\n", __func__);
@@ -1253,8 +1252,6 @@ qmi_handle_create_failed:
 
 void msm_slim_qmi_exit(struct msm_slim_ctrl *dev)
 {
-	if (!dev->qmi.handle || !dev->qmi.task)
-		return;
 	qmi_handle_destroy(dev->qmi.handle);
 	flush_kthread_worker(&dev->qmi.kworker);
 	kthread_stop(dev->qmi.task);

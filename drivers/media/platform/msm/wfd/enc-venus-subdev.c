@@ -446,8 +446,6 @@ static long venc_close(struct v4l2_subdev *sd, void *arg)
 	if (rc)
 		WFD_MSG_WARN("Failed to close vidc context\n");
 
-	kfree(inst->free_output_indices.bitmap);
-	kfree(inst->free_input_indices.bitmap);
 	kfree(inst);
 	sd->dev_priv = inst = NULL;
 venc_close_fail:
@@ -831,7 +829,7 @@ static int venc_unmap_user_to_kernel(struct venc_inst *inst,
 	if (mregion->paddr) {
 		ion_unmap_iommu(venc_ion_client, mregion->ion_handle,
 				domain, partition);
-		mregion->paddr = 0;
+		mregion->paddr = NULL;
 	}
 
 	if (!IS_ERR_OR_NULL(mregion->kvaddr)) {

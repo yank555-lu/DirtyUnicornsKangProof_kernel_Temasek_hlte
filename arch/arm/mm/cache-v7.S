@@ -13,7 +13,6 @@
 #include <linux/linkage.h>
 #include <linux/init.h>
 #include <asm/assembler.h>
-#include <asm/errno.h>
 #include <asm/unwind.h>
 
 #include "proc-macros.S"
@@ -48,7 +47,7 @@ ENTRY(v7_flush_dcache_louis)
 	mov	r3, r3, lsr #20			@ r3 = LoUIS * 2
 	moveq	pc, lr				@ return if level == 0
 	mov	r10, #0				@ r10 (starting level) = 0
-	b	flush_levels			@ start flushing cache levels
+	b	loop1				@ start flushing cache levels
 ENDPROC(v7_flush_dcache_louis)
 
 /*
@@ -67,7 +66,7 @@ ENTRY(v7_flush_dcache_all)
 	mov	r3, r3, lsr #23			@ left align loc bit field
 	beq	finished			@ if loc is 0, then no need to clean
 	mov	r10, #0				@ start clean at cache level 0
-flush_levels:
+loop1:
 	add	r2, r10, r10, lsr #1		@ work out 3x current cache level
 	mov	r1, r0, lsr r2			@ extract cache type bits from clidr
 	and	r1, r1, #7			@ mask of the bits for current cache only
@@ -89,9 +88,9 @@ flush_levels:
 	clz	r5, r4				@ find bit position of way size increment
 	ldr	r7, =0x7fff
 	ands	r7, r7, r1, lsr #13		@ extract max number of the index size
-loop1:
-	mov	r9, r4				@ create working copy of max way size
 loop2:
+	mov	r9, r4				@ create working copy of max way size
+loop3:
  ARM(	orr	r11, r10, r9, lsl r5	)	@ factor way and cache number into r11
  THUMB(	lsl	r6, r9, r5		)
  THUMB(	orr	r11, r10, r6		)	@ factor way and cache number into r11
@@ -100,13 +99,13 @@ loop2:
  THUMB(	orr	r11, r11, r6		)	@ factor index number into r11
 	mcr	p15, 0, r11, c7, c14, 2		@ clean & invalidate by set/way
 	subs	r9, r9, #1			@ decrement the way
-	bge	loop2
+	bge	loop3
 	subs	r7, r7, #1			@ decrement the index
-	bge	loop1
+	bge	loop2
 skip:
 	add	r10, r10, #2			@ increment cache number
 	cmp	r3, r10
-	bgt	flush_levels
+	bgt	loop1
 finished:
 	mov	r10, #0				@ swith back to cache level 0
 	mcr	p15, 2, r10, c0, c0, 0		@ select current cache level in cssr
@@ -235,6 +234,7 @@ ENTRY(v7_coherent_user_range)
 	add	r12, r12, r2
 	cmp	r12, r1
 	blo	2b
+3:
 	mov	r0, #0
 	ALT_SMP(mcr	p15, 0, r0, c7, c1, 6)	@ invalidate BTB Inner Shareable
 	ALT_UP(mcr	p15, 0, r0, c7, c5, 6)	@ invalidate BTB
@@ -244,14 +244,13 @@ ENTRY(v7_coherent_user_range)
 
 /*
  * Fault handling for the cache operation above. If the virtual address in r0
- * isn't mapped, fail with -EFAULT.
+ * isn't mapped, just try the next page.
  */
 9001:
-#ifdef CONFIG_ARM_ERRATA_775420
-	dsb
-#endif
-	mov	r0, #-EFAULT
-	mov	pc, lr
+	mov	r12, r12, lsr #12
+	mov	r12, r12, lsl #12
+	add	r12, r12, #4096
+	b	3b
  UNWIND(.fnend		)
 ENDPROC(v7_coherent_kern_range)
 ENDPROC(v7_coherent_user_range)

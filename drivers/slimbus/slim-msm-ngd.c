@@ -626,6 +626,11 @@ static int ngd_xferandwait_ack(struct slim_controller *ctrl,
 			ret = -ETIMEDOUT;
 		else
 			ret = txn->ec;
+	} else if (ret == -EREMOTEIO &&
+			(txn->mc == SLIM_USR_MC_CHAN_CTRL ||
+			 txn->mc == SLIM_USR_MC_DISCONNECT_PORT)) {
+		/* HW restarting, channel/port removal should succeed */
+		return 0;
 	}
 
 	if (ret) {
@@ -1156,7 +1161,6 @@ static int ngd_notify_slaves(void *data)
 	struct list_head *pos, *next;
 	int ret, i = 0;
 	ret = qmi_svc_event_notifier_register(SLIMBUS_QMI_SVC_ID,
-				SLIMBUS_QMI_SVC_V1,
 				SLIMBUS_QMI_INS_ID, &dev->qmi.nb);
 	if (ret) {
 		pr_err("Slimbus QMI service registration failed:%d", ret);
@@ -1167,7 +1171,6 @@ static int ngd_notify_slaves(void *data)
 		set_current_state(TASK_INTERRUPTIBLE);
 		wait_for_completion(&dev->qmi.slave_notify);
 		/* Probe devices for first notification */
-
 		if (!i) {
 			i++;
 			dev->err = 0;
@@ -1265,7 +1268,6 @@ static int __devinit ngd_slim_probe(struct platform_device *pdev)
 	struct resource		*irq, *bam_irq;
 	bool			rxreg_access = false;
 	bool			slim_mdm = false;
-	const char		*ext_modem_id = NULL;
 
 	slim_mem = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						"slimbus_physical");
@@ -1346,10 +1348,8 @@ static int __devinit ngd_slim_probe(struct platform_device *pdev)
 					&dev->pdata.apps_pipes);
 		of_property_read_u32(pdev->dev.of_node, "qcom,ea-pc",
 					&dev->pdata.eapc);
-		ret = of_property_read_string(pdev->dev.of_node,
-					"qcom,slim-mdm", &ext_modem_id);
-		if (!ret)
-			slim_mdm = true;
+		slim_mdm = of_property_read_bool(pdev->dev.of_node,
+					"qcom,slim-mdm");
 	} else {
 		dev->ctrl.nr = pdev->id;
 	}
@@ -1424,7 +1424,7 @@ static int __devinit ngd_slim_probe(struct platform_device *pdev)
 
 	if (slim_mdm) {
 		dev->mdm.nb.notifier_call = mdm_ssr_notify_cb;
-		dev->mdm.ssr = subsys_notif_register_notifier(ext_modem_id,
+		dev->mdm.ssr = subsys_notif_register_notifier("external_modem",
 							&dev->mdm.nb);
 		if (IS_ERR_OR_NULL(dev->mdm.ssr))
 			dev_err(dev->dev,
@@ -1483,7 +1483,6 @@ static int __devexit ngd_slim_remove(struct platform_device *pdev)
 		sysfs_remove_file(&dev->dev->kobj,
 				&dev_attr_debug_mask.attr);
 	qmi_svc_event_notifier_unregister(SLIMBUS_QMI_SVC_ID,
-				SLIMBUS_QMI_SVC_V1,
 				SLIMBUS_QMI_INS_ID, &dev->qmi.nb);
 	pm_runtime_disable(&pdev->dev);
 	if (!IS_ERR_OR_NULL(dev->mdm.ssr))

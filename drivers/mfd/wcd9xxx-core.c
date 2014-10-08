@@ -119,29 +119,6 @@ int wcd9xxx_reg_read(
 }
 EXPORT_SYMBOL(wcd9xxx_reg_read);
 
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-int __wcd9xxx_reg_read_safe(struct wcd9xxx *wcd9xxx, unsigned short reg)
-{
-        u8 val;
-        int ret;
-
-        ret = wcd9xxx_read(wcd9xxx, reg, 1, &val, false);
-
-        if (ret < 0)
-                return ret;
-        else
-                return val;
-}
-
-int wcd9xxx_reg_read_safe(struct wcd9xxx_core_resource *core_res, unsigned short reg)
-{
-	struct wcd9xxx *wcd9xxx = (struct wcd9xxx *) core_res->parent;
-	return __wcd9xxx_reg_read_safe(wcd9xxx, reg);
-
-}
-EXPORT_SYMBOL(wcd9xxx_reg_read_safe);
-#endif
-
 static int wcd9xxx_write(struct wcd9xxx *wcd9xxx, unsigned short reg,
 			int bytes, void *src, bool interface_reg)
 {
@@ -1420,7 +1397,7 @@ static struct wcd9xxx_pdata *wcd9xxx_populate_dt_pdata(struct device *dev)
 	BUG_ON(static_cnt <= 0 || ond_cnt < 0 || cp_supplies_cnt < 0);
 	if ((static_cnt + ond_cnt + cp_supplies_cnt)
 			> ARRAY_SIZE(pdata->regulator)) {
-		dev_err(dev, "%s: Num of supplies %u > max supported %zu\n",
+		dev_err(dev, "%s: Num of supplies %u > max supported %u\n",
 			__func__, static_cnt, ARRAY_SIZE(pdata->regulator));
 		goto err;
 	}

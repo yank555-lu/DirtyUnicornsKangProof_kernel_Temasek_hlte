@@ -47,7 +47,7 @@
  */
 ENTRY(cpu_v7_switch_mm)
 #ifdef CONFIG_MMU
-	mmid	r1, r1				@ get mm->context.id
+	ldr	r1, [r1, #MM_CONTEXT_ID]	@ get mm->context.id
 	and	r3, r1, #0xff
 	mov	r3, r3, lsl #(48 - 32)		@ ASID
 	mcrr	p15, 0, r0, r3, c2		@ set TTB 0
@@ -70,8 +70,7 @@ ENTRY(cpu_v7_set_pte_ext)
 	tst	r3, #1 << (55 - 32)		@ L_PTE_DIRTY
 	orreq	r2, #L_PTE_RDONLY
 1:	strd	r2, r3, [r0]
-	ALT_SMP(mov	pc, lr)
-	ALT_UP (mcr	p15, 0, r0, c7, c10, 1)		@ flush_pte
+	mcr	p15, 0, r0, c7, c10, 1		@ flush_pte
 #endif
 	mov	pc, lr
 ENDPROC(cpu_v7_set_pte_ext)

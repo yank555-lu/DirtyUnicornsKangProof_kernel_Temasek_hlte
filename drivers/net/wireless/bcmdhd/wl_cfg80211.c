@@ -8014,7 +8014,7 @@ wl_notify_connect_status(struct wl_priv *wl, bcm_struct_cfgdev *cfgdev,
 			if (wl_get_drv_status(wl, CONNECTING, ndev))
 				wl_bss_connect_done(wl, ndev, e, data, false);
 		} else {
-			WL_DBG(("%s nothing\n", __FUNCTION__));
+			printk("%s nothing\n", __FUNCTION__);
 		}
 	} else {
 		WL_ERR(("Invalid ndev status %d\n", wl_get_mode_by_netdev(wl, ndev)));
@@ -9028,9 +9028,6 @@ wl_notify_sched_scan_results(struct wl_priv *wl, struct net_device *ndev,
 		}
 
 		wl_set_drv_status(wl, SCANNING, ndev);
-#ifdef CUSTOM_SET_SHORT_DWELL_TIME
-		net_set_short_dwell_time(ndev, FALSE);
-#endif
 #if FULL_ESCAN_ON_PFN_NET_FOUND
 		WL_PNO((">>> Doing Full ESCAN on PNO event\n"));
 		err = wl_do_escan(wl, wiphy, ndev, NULL);

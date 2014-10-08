@@ -38,9 +38,6 @@
 #define SYNAPTICS_PM_GPIO_STATE_WAKE	0
 #define SYNAPTICS_PM_GPIO_STATE_SLEEP	1
 
-#undef dev_info
-#define dev_info(dev, fmt, arg...)
-
 struct qpnp_pin_cfg synaptics_int_set[] = {
 	{
 		.mode = 0,
@@ -601,7 +598,7 @@ static struct device_attribute attrs[] = {
 			synaptics_rmi4_suspend_store),
 };
 
-extern unsigned int system_rev;
+extern int system_rev;
 
 static struct list_head exp_fn_list;
 

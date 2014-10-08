@@ -31,7 +31,6 @@
 #include "vidc_hfi_io.h"
 #include "msm_vidc_debug.h"
 #include <linux/iopoll.h>
-#include <media/msm_vidc.h>
 
 #define FIRMWARE_SIZE			0X00A00000
 #define REG_ADDR_OFFSET_BITMASK	0x000FFFFF
@@ -1085,28 +1084,24 @@ static inline int venus_hfi_clk_enable(struct venus_hfi_device *device)
 		return 0;
 	}
 
-	for (i = VCODEC_CLK; i <= device->clk_gating_level; i++) {
+	for (i = 0; i <= device->clk_gating_level; i++) {
 		cl = &device->resources.clock[i];
 		rc = clk_enable(cl->clk);
 		if (rc) {
-			dprintk(VIDC_ERR, "%s: Failed to enable %s clock\n",
-				__func__, cl->name);
+			dprintk(VIDC_ERR, "Failed to enable clocks\n");
 			goto fail_clk_enable;
 		} else {
-			dprintk(VIDC_DBG, "%s: Clock: %s enabled\n",
-				__func__, cl->name);
+			dprintk(VIDC_DBG, "Clock: %s enabled\n", cl->name);
 		}
 	}
 	device->clk_state = ENABLED_PREPARED;
 	++device->clk_cnt;
 	return 0;
 fail_clk_enable:
-	for (i--; i >= VCODEC_CLK; i--) {
+	for (i--; i >= 0; i--) {
 		cl = &device->resources.clock[i];
 		usleep(100);
 		clk_disable(cl->clk);
-		dprintk(VIDC_ERR, "%s: Clock: %s disabled\n",
-			__func__, cl->name);
 	}
 	device->clk_state = DISABLED_PREPARED;
 	return rc;
@@ -1136,12 +1131,10 @@ static inline void venus_hfi_clk_disable(struct venus_hfi_device *device)
 	if (rc)
 		dprintk(VIDC_WARN, "Failed to set clock rate to min: %d\n", rc);
 
-	for (i = VCODEC_CLK; i <= device->clk_gating_level; i++) {
+	for (i = 0; i <= device->clk_gating_level; i++) {
 		cl = &device->resources.clock[i];
 		usleep(100);
 		clk_disable(cl->clk);
-		dprintk(VIDC_DBG, "%s: Clock: %s disabled\n",
-			__func__, cl->name);
 	}
 	device->clk_state = DISABLED_PREPARED;
 	--device->clk_cnt;
@@ -1248,6 +1241,12 @@ static inline int venus_hfi_power_on(struct venus_hfi_device *device)
 		goto err_enable_gdsc;
 	}
 
+	rc = venus_hfi_iommu_attach(device);
+	if (rc) {
+		dprintk(VIDC_ERR, "Failed to attach iommu after power on");
+		goto err_iommu_attach;
+	}
+
 	if (device->clk_state == DISABLED_UNPREPARED)
 		rc = venus_hfi_prepare_enable_clks(device);
 	else if (device->clk_state == DISABLED_PREPARED)
@@ -1258,11 +1257,6 @@ static inline int venus_hfi_power_on(struct venus_hfi_device *device)
 		goto err_enable_clk;
 	}
 
-	rc = venus_hfi_iommu_attach(device);
-	if (rc) {
-		dprintk(VIDC_ERR, "Failed to attach iommu after power on");
-		goto err_iommu_attach;
-	}
 
 	/*
 	 * Re-program all of the registers that get reset as a result of
@@ -1298,21 +1292,17 @@ static inline int venus_hfi_power_on(struct venus_hfi_device *device)
 		dprintk(VIDC_ERR, "Failed to reset venus core");
 		goto err_reset_core;
 	}
-
-	if (!msm_vidc_instance_open()) {
-		/*
-		 * write_lock is already acquired at this point, so to avoid
-		 * recursive lock in cmdq_write function, call nolock version
-		 * of alloc_ocmem
-		 */
-		WARN_ON(!mutex_is_locked(&device->write_lock));
-		rc = __alloc_ocmem(device, device->ocmem_size, false);
-		if (rc) {
-			dprintk(VIDC_ERR, "Failed to allocate OCMEM");
-			goto err_alloc_ocmem;
-		}
+	/*
+	 * write_lock is already acquired at this point, so to avoid
+	 * recursive lock in cmdq_write function, call nolock version
+	 * of alloc_ocmem
+	 */
+	WARN_ON(!mutex_is_locked(&device->write_lock));
+	rc = __alloc_ocmem(device, device->ocmem_size, false);
+	if (rc) {
+		dprintk(VIDC_ERR, "Failed to allocate OCMEM");
+		goto err_alloc_ocmem;
 	}
-
 	device->power_enabled = true;
 	++device->pwr_cnt;
 	dprintk(VIDC_INFO, "resuming from power collapse\n");
@@ -1321,10 +1311,10 @@ err_alloc_ocmem:
 err_reset_core:
 	venus_hfi_tzbsp_set_video_state(TZBSP_VIDEO_STATE_SUSPEND);
 err_set_video_state:
-	venus_hfi_iommu_detach(device);
-err_iommu_attach:
 	venus_hfi_clk_disable(device);
 err_enable_clk:
+	venus_hfi_iommu_detach(device);
+err_iommu_attach:
 	regulator_disable(device->gdsc);
 err_enable_gdsc:
 	if (device->res->ocmem_size)
@@ -2843,14 +2833,12 @@ static void venus_hfi_pm_hndlr(struct work_struct *work)
 	}
 	mutex_unlock(&device->clk_pwr_lock);
 
-	if (!msm_vidc_instance_open()) {
-		rc = venus_hfi_unset_free_ocmem(device);
-		if (rc) {
-			dprintk(VIDC_ERR,
-					"Failed to unset and free OCMEM for PC %d\n",
-					rc);
-			return;
-		}
+	rc = venus_hfi_unset_free_ocmem(device);
+	if (rc) {
+		dprintk(VIDC_ERR,
+				"Failed to unset and free OCMEM for PC %d\n",
+				rc);
+		return;
 	}
 
 	rc = venus_hfi_prepare_pc(device);
@@ -3106,7 +3094,7 @@ static inline int venus_hfi_init_clocks(struct msm_vidc_platform_resources *res,
 			  );
 	}
 
-	for (i = VCODEC_CLK; i < VCODEC_MAX_CLKS; i++) {
+	for (i = 0; i < VCODEC_MAX_CLKS; i++) {
 		if (i == VCODEC_OCMEM_CLK && !res->ocmem_size)
 			continue;
 		cl = &device->resources.clock[i];
@@ -3122,7 +3110,7 @@ static inline int venus_hfi_init_clocks(struct msm_vidc_platform_resources *res,
 	}
 
 	if (i < VCODEC_MAX_CLKS) {
-		for (--i; i >= VCODEC_CLK; i--) {
+		for (--i; i >= 0; i--) {
 			if (i == VCODEC_OCMEM_CLK && !res->ocmem_size)
 				continue;
 			cl = &device->resources.clock[i];
@@ -3141,7 +3129,7 @@ static inline void venus_hfi_deinit_clocks(struct venus_hfi_device *device)
 		return;
 	}
 
-	for (i = VCODEC_CLK; i < VCODEC_MAX_CLKS; i++) {
+	for (i = 0; i < VCODEC_MAX_CLKS; i++) {
 		if (i == VCODEC_OCMEM_CLK && !device->res->ocmem_size)
 			continue;
 		clk_put(device->resources.clock[i].clk);
@@ -3166,8 +3154,6 @@ static inline void venus_hfi_disable_unprepare_clks(
 			cl = &device->resources.clock[i];
 			usleep(100);
 			clk_disable(cl->clk);
-			dprintk(VIDC_DBG, "%s: Clock: %s disabled\n",
-				__func__, cl->name);
 		}
 	} else {
 		for (i = device->clk_gating_level + 1;
@@ -3175,8 +3161,6 @@ static inline void venus_hfi_disable_unprepare_clks(
 			cl = &device->resources.clock[i];
 			usleep(100);
 			clk_disable(cl->clk);
-			dprintk(VIDC_DBG, "%s: Clock: %s disabled\n",
-				__func__, cl->name);
 		}
 	}
 	for (i = VCODEC_CLK; i < VCODEC_MAX_CLKS; i++) {
@@ -3184,8 +3168,6 @@ static inline void venus_hfi_disable_unprepare_clks(
 			continue;
 		cl = &device->resources.clock[i];
 		clk_unprepare(cl->clk);
-		dprintk(VIDC_DBG, "%s: Clock: %s unprepared\n",
-			__func__, cl->name);
 	}
 	device->clk_state = DISABLED_UNPREPARED;
 	--device->clk_cnt;
@@ -3212,24 +3194,20 @@ static inline int venus_hfi_prepare_enable_clks(struct venus_hfi_device *device)
 		cl = &device->resources.clock[i];
 		rc = clk_prepare_enable(cl->clk);
 		if (rc) {
-			dprintk(VIDC_ERR, "%s: Failed to enable %s clock\n",
-				__func__, cl->name);
+			dprintk(VIDC_ERR, "Failed to enable clocks\n");
 			goto fail_clk_enable;
 		} else {
-			dprintk(VIDC_DBG, "%s: Clock: %s prepare and enabled\n",
-				__func__, cl->name);
+			dprintk(VIDC_DBG, "Clock: %s enabled\n", cl->name);
 		}
 	}
 	device->clk_state = ENABLED_PREPARED;
 	++device->clk_cnt;
 	return rc;
 fail_clk_enable:
-	for (; i >= VCODEC_CLK; i--) {
+	for (; i >= 0; i--) {
 		cl = &device->resources.clock[i];
 		usleep(100);
 		clk_disable_unprepare(cl->clk);
-		dprintk(VIDC_ERR, "%s: Clock: %s disable and unprepared\n",
-			__func__, cl->name);
 	}
 	device->clk_state = DISABLED_UNPREPARED;
 	return rc;
@@ -3569,60 +3547,64 @@ static int venus_hfi_load_fw(void *dev)
 			__func__, device);
 		return -EINVAL;
 	}
-	device->clk_gating_level = VCODEC_NONE;
+	device->clk_gating_level = VCODEC_CLK;
 
-	mutex_lock(&device->clk_pwr_lock);
-	rc = regulator_enable(device->gdsc);
-	if (rc) {
-		dprintk(VIDC_ERR, "Failed to enable GDSC %d", rc);
-		goto fail_enable_gdsc;
-	}
-	rc = venus_hfi_prepare_enable_clks(device);
-	if (rc) {
-		dprintk(VIDC_ERR, "Failed to enable clocks: %d\n", rc);
-		goto fail_enable_clks;
-	}
 	rc = venus_hfi_iommu_attach(device);
 	if (rc) {
 		dprintk(VIDC_ERR, "Failed to attach iommu");
 		goto fail_iommu_attach;
 	}
 
+	mutex_lock(&device->clk_pwr_lock);
 	if (!device->resources.fw.cookie) {
+		rc = regulator_enable(device->gdsc);
+		if (rc) {
+			dprintk(VIDC_ERR, "Failed to enable GDSC %d", rc);
+			mutex_unlock(&device->clk_pwr_lock);
+			goto fail_enable_gdsc;
+		}
 		device->resources.fw.cookie = subsystem_get("venus");
 	}
+
 	if (IS_ERR_OR_NULL(device->resources.fw.cookie)) {
 		dprintk(VIDC_ERR, "Failed to download firmware\n");
 		rc = -ENOMEM;
+		mutex_unlock(&device->clk_pwr_lock);
 		goto fail_load_fw;
 	}
-
 	device->power_enabled = true;
 	++device->pwr_cnt;
-
+	/*Clocks can be enabled only after pil_get since
+	 * gdsc is turned-on in pil_get*/
+	rc = venus_hfi_prepare_enable_clks(device);
+	mutex_unlock(&device->clk_pwr_lock);
+	if (rc) {
+		dprintk(VIDC_ERR, "Failed to enable clocks: %d\n", rc);
+		goto fail_enable_clks;
+	}
 	rc = protect_cp_mem(device);
 	if (rc) {
 		dprintk(VIDC_ERR, "Failed to protect memory\n");
 		goto fail_protect_mem;
 	}
 
-	mutex_unlock(&device->clk_pwr_lock);
 	return rc;
-
 fail_protect_mem:
-	subsystem_put(device->resources.fw.cookie);
-	device->resources.fw.cookie = NULL;
-fail_load_fw:
-	venus_hfi_iommu_detach(device);
-fail_iommu_attach:
+	mutex_lock(&device->clk_pwr_lock);
 	venus_hfi_disable_unprepare_clks(device);
+	mutex_unlock(&device->clk_pwr_lock);
 fail_enable_clks:
+	subsystem_put(device->resources.fw.cookie);
+fail_load_fw:
+	mutex_lock(&device->clk_pwr_lock);
+	device->resources.fw.cookie = NULL;
 	regulator_disable(device->gdsc);
 	device->power_enabled = false;
 	--device->pwr_cnt;
-fail_enable_gdsc:
-	dprintk(VIDC_ERR, "Failed to load firmware\n");
 	mutex_unlock(&device->clk_pwr_lock);
+fail_enable_gdsc:
+	venus_hfi_iommu_detach(device);
+fail_iommu_attach:
 	return rc;
 }
 

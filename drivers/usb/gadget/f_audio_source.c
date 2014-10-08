@@ -260,15 +260,12 @@ struct audio_dev {
 	s64				frames_sent;
 
 	bool				audio_ep_enabled;
-	bool				triggered;
 };
 
 static inline struct audio_dev *func_to_audio_source(struct usb_function *f)
 {
 	return container_of(f, struct audio_dev, func);
 }
-
-static void audio_pcm_playback_start(struct audio_dev *audio);
 
 /*-------------------------------------------------------------------------*/
 
@@ -330,22 +327,15 @@ static void audio_send(struct audio_dev *audio)
 	s64 msecs;
 	s64 frames;
 	ktime_t now;
-	unsigned long flags;
 
-	spin_lock_irqsave(&audio->lock, flags);
 	/* audio->substream will be null if we have been closed */
-	if (!audio->substream) {
-		spin_unlock_irqrestore(&audio->lock, flags);
+	if (!audio->substream)
 		return;
-	}
 	/* audio->buffer_pos will be null if we have been stopped */
-	if (!audio->buffer_pos) {
-		spin_unlock_irqrestore(&audio->lock, flags);
+	if (!audio->buffer_pos)
 		return;
-	}
 
 	runtime = audio->substream->runtime;
-	spin_unlock_irqrestore(&audio->lock, flags);
 
 	/* compute number of frames to send */
 	now = ktime_get();
@@ -369,21 +359,8 @@ static void audio_send(struct audio_dev *audio)
 
 	while (frames > 0) {
 		req = audio_req_get(audio);
-		spin_lock_irqsave(&audio->lock, flags);
-		/* audio->substream will be null if we have been closed */
-		if (!audio->substream) {
-			spin_unlock_irqrestore(&audio->lock, flags);
-			return;
-		}
-		/* audio->buffer_pos will be null if we have been stopped */
-		if (!audio->buffer_pos) {
-			spin_unlock_irqrestore(&audio->lock, flags);
-			return;
-		}
-		if (!req) {
-			spin_unlock_irqrestore(&audio->lock, flags);
+		if (!req)
 			break;
-		}
 
 		length = frames_to_bytes(runtime, frames);
 		if (length > IN_EP_MAX_PACKET_SIZE)
@@ -409,7 +386,6 @@ static void audio_send(struct audio_dev *audio)
 		}
 
 		req->length = length;
-		spin_unlock_irqrestore(&audio->lock, flags);
 		ret = usb_ep_queue(audio->in_ep, req, GFP_ATOMIC);
 		if (ret < 0) {
 			pr_err("usb_ep_queue failed ret: %d\n", ret);
@@ -569,10 +545,6 @@ static int audio_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 				return ret;
 			}
 			audio->audio_ep_enabled = true;
-			if (audio->triggered) {
-				// resume playing if we are still triggered
-				audio_pcm_playback_start(audio);
-			}
 		} else if (!alt && audio->audio_ep_enabled) {
 			usb_ep_disable(audio->in_ep);
 			audio->audio_ep_enabled = false;
@@ -794,13 +766,11 @@ static int audio_pcm_playback_trigger(struct snd_pcm_substream *substream,
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
-		audio->triggered = 1;
 		audio_pcm_playback_start(audio);
 		break;
 
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
-		audio->triggered = 0;
 		audio_pcm_playback_stop(audio);
 		break;
 

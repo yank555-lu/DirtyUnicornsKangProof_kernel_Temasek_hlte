@@ -572,8 +572,10 @@ static bool __ref msm_pm_spm_power_collapse(
 	}
 	msm_jtag_restore_state();
 
-	if (collapsed)
+	if (collapsed) {
+		cpu_init();
 		local_fiq_enable();
+	}
 
 	msm_pm_boot_config_after_pc(cpu);
 
@@ -816,7 +818,7 @@ int msm_cpu_pm_enter_sleep(enum msm_pm_sleep_mode mode, bool from_idle)
 
 int msm_pm_wait_cpu_shutdown(unsigned int cpu)
 {
-	int timeout = 0;
+	int timeout = 10;
 
 	if (!msm_pm_slp_sts)
 		return 0;
@@ -1059,7 +1061,7 @@ static inline u32 msm_pc_debug_counters_read_register(
 	return readl_relaxed(reg + (index * 4 + offset) * 4);
 }
 
-char *counter_name[MSM_PC_NUM_COUNTERS] = {
+static char *counter_name[] = {
 		"PC Entry Counter",
 		"Warmboot Entry Counter",
 		"PC Bailout Counter"
@@ -1071,24 +1073,19 @@ static int msm_pc_debug_counters_copy(
 	int j;
 	u32 stat;
 	unsigned int cpu;
-	unsigned int len;
 
 	for_each_possible_cpu(cpu) {
-		len = scnprintf(data->buf + data->len,
+		data->len += scnprintf(data->buf + data->len,
 				sizeof(data->buf)-data->len,
 				"CPU%d\n", cpu);
 
-		data->len += len;
-
 		for (j = 0; j < MSM_PC_NUM_COUNTERS; j++) {
 			stat = msm_pc_debug_counters_read_register(
-				data->reg, cpu, j);
-			 len = scnprintf(data->buf + data->len,
-					 sizeof(data->buf) - data->len,
-					"\t%s: %d", counter_name[j], stat);
-
-			 data->len += len;
-
+					data->reg, cpu, j);
+			data->len += scnprintf(data->buf + data->len,
+					sizeof(data->buf)-data->len,
+					"\t%s : %d\n", counter_name[j],
+					stat);
 		}
 
 	}

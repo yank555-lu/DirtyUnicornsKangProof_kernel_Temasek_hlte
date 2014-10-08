@@ -12,7 +12,6 @@
  */
 #include <linux/rwsem.h>
 #include <linux/mutex.h>
-#include <linux/ww_mutex.h>
 #include <linux/sched.h>
 #include <linux/delay.h>
 #include <linux/lockdep.h>
@@ -980,7 +979,7 @@ static void dotest(void (*testcase_fn)(void), int expected, int lockclass_mask)
 	 * Some tests (e.g. double-unlock) might corrupt the preemption
 	 * count, so restore it:
 	 */
-	preempt_count_set(saved_preempt_count);
+	preempt_count() = saved_preempt_count;
 #ifdef CONFIG_TRACE_IRQFLAGS
 	if (softirq_count())
 		current->softirqs_enabled = 0;

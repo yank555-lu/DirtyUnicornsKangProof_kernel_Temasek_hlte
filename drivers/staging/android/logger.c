@@ -34,7 +34,7 @@ static char klog_buf[256];
 #endif
 
 #ifndef CONFIG_LOGCAT_SIZE
-#define CONFIG_LOGCAT_SIZE 128
+#define CONFIG_LOGCAT_SIZE 256
 #endif
 
 /*
@@ -94,10 +94,9 @@ static inline struct logger_log *file_get_log(struct file *file)
 {
 	if (file->f_mode & FMODE_READ) {
 		struct logger_reader *reader = file->private_data;
-
 		return reader->log;
-	}
-	return file->private_data;
+	} else
+		return file->private_data;
 }
 
 /*
@@ -144,7 +143,8 @@ static size_t get_user_hdr_len(int ver)
 {
 	if (ver < 2)
 		return sizeof(struct user_logger_entry_compat);
-	return sizeof(struct logger_entry);
+	else
+		return sizeof(struct logger_entry);
 }
 
 static ssize_t copy_header_to_user(int ver, struct logger_entry *entry,
