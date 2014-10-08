@@ -34,7 +34,6 @@ CONFIG_GENERIC_BUG=y
 # CONFIG_ARCH_RANDOM is not set
 CONFIG_HAVE_IRQ_WORK=y
 CONFIG_IRQ_WORK=y
-
 #
 # General setup
 #
